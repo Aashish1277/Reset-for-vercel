@@ -5,16 +5,18 @@ import random
 import string
 import uuid
 from datetime import datetime
-from flask import Flask, request, jsonify
+from flask import Flask, request
 from telebot import TeleBot, types
 
 # ---------- CONFIG ----------
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+if not BOT_TOKEN:
+    raise RuntimeError("BOT_TOKEN environment variable not set!")
 ADMIN_ID = int(os.getenv("ADMIN_ID", 0))
 
 bot = TeleBot(BOT_TOKEN, parse_mode="HTML")
 
-# ---------- ORIGINAL RESET FUNCTIONS ----------
+# ---------- ORIGINAL RESET FUNCTIONS (unchanged) ----------
 def generate_device_info():
     ANDROID_ID = f"android-{''.join(random.choices(string.hexdigits.lower(), k=16))}"
     USER_AGENT = f"Instagram 394.0.0.46.81 Android ({random.choice(['28/9','29/10','30/11','31/12'])}; {random.choice(['240dpi','320dpi','480dpi'])}; {random.choice(['720x1280','1080x1920','1440x2560'])}; {random.choice(['samsung','xiaomi','huawei','oneplus','google'])}; {random.choice(['SM-G975F','Mi-9T','P30-Pro','ONEPLUS-A6003','Pixel-4'])}; intel; en_US; {random.randint(100000000,999999999)})"
@@ -54,7 +56,6 @@ def reset_instagram_password(reset_link):
         if ":" in token:
             token = token.split(":")[0]
 
-        # Step 1
         url1 = "https://i.instagram.com/api/v1/accounts/password_reset/"
         data1 = {
             "source": "one_click_login_email",
@@ -75,7 +76,6 @@ def reset_instagram_password(reset_link):
         nonce_code = resp1.get("nonce_code")
         challenge_context = resp1.get("challenge_context")
 
-        # Step 2
         url2 = "https://i.instagram.com/api/v1/bloks/apps/com.instagram.challenge.navigation.take_challenge/"
         data2 = {
             "user_id": str(user_id),
@@ -95,7 +95,6 @@ def reset_instagram_password(reset_link):
             f'(bk.action.i64.Const, {cni}), "')[1].split(
             '", (bk.action.bool.Const, false)))')[0]
 
-        # Step 3
         data3 = {
             "is_caa": "False",
             "source": "",
@@ -163,18 +162,31 @@ def handle_link(message):
     bot.edit_message_text(reply, message.chat.id, processing.message_id)
 
 
-# ---------- FLASK APP FOR VERCEL ----------
+# ---------- FLASK APP ----------
 app = Flask(__name__)
 
-@app.route('/api/webhook', methods=['POST'])
-def webhook():
+@app.route('/api/', methods=['POST'])
+def webhook_api():
     if request.headers.get('content-type') == 'application/json':
-        json_string = request.get_data().decode('utf-8')
-        update = types.Update.de_json(json_string)
+        json_str = request.get_data().decode('utf-8')
+        update = types.Update.de_json(json_str)
         bot.process_new_updates([update])
         return 'OK', 200
-    return 'Forbidden', 403
+    else:
+        return 'Bad content type', 400
+
+@app.route('/api/webhook', methods=['POST'])
+def webhook_api2():
+    return webhook_api()
+
+@app.route('/api', methods=['POST'])
+def webhook_api3():
+    return webhook_api()
 
 @app.route('/')
-def home():
+def index():
     return 'Bot is running.'
+
+# For local testing
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8000) 
